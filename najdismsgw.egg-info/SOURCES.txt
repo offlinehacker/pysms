@@ -1,0 +1,10 @@
+setup.py
+najdismsgw/__init__.py
+najdismsgw/mail.py
+najdismsgw/sender.py
+najdismsgw/sms.py
+najdismsgw.egg-info/PKG-INFO
+najdismsgw.egg-info/SOURCES.txt
+najdismsgw.egg-info/dependency_links.txt
+najdismsgw.egg-info/entry_points.txt
+najdismsgw.egg-info/top_level.txt

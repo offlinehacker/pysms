@@ -1,0 +1,4 @@
+
+        [console_scripts]
+        najdismsgw = najdismsgw.sender:main
+        

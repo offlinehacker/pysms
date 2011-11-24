@@ -26,4 +26,9 @@ setup(
         "Topic :: Utilities",
         "License :: OSI Approved :: GNU General Public License (GPL)",
     ],
+    entry_points="""
+        [console_scripts]
+        najdismsgw = najdismsgw.sender:main
+        """,
+
 )
