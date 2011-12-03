@@ -9,7 +9,7 @@ def splitCount(seq, length):
 def main():
     g_mail="somemail@gmail.com"
     g_password="pass"
-    s_mail="findme@something.com"
+    s_mails="mail1@something.com;mail2@something.com"
     ns_username="username"
     ns_password="pass"
     ns_dest_phone="041992883"
