@@ -9,4 +9,4 @@ Usage
 -----
 Sms sending code is in sms.py, mail sending code in mail.py and app that is checking for new mail and sendin smses is in sender.py
 
-Just set parameters in sender.py and run it :)
+Just set parameters in sender.py and run it or do "python setup.py install" and copy init script to /etc/init.d and start it
