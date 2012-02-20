@@ -10,6 +10,10 @@ from setuptools import setup, find_packages
 def read(fname):
     return open(os.path.join(os.path.dirname(__file__), fname)).read()
 
+requires = [
+    "mechanize",
+    ]
+
 setup(
     name = "najdismsgw",
     version = "0.2",
@@ -30,5 +34,5 @@ setup(
         [console_scripts]
         najdismsgw = najdismsgw.sender:main
         """,
-
+    install_requires=requires,
 )
