@@ -131,8 +131,7 @@ class NajdiSiSms(Sms):
                  :py:exc:`pysms.sms.SendException`,
         """
 
-
-        number = str(self._parse_number(number).national_number)
+        number = str(self._parse_number(number, country = "SI").national_number)
         text = self._parse_text(text)
 
         response = None
