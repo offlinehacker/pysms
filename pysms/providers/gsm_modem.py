@@ -16,7 +16,7 @@ from phonenumbers import PhoneNumberFormat
 from pysms import Sms
 from pysms import AuthException, SendException
 
-class gsm_modem(Sms):
+class GsmModemSms(Sms):
     """
     Send sms-es using gsm modem
     """
