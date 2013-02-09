@@ -48,8 +48,13 @@ setup(
     ],
     # Install requierments
     install_requires = [
+        "six",
+        "phonenumbers",
+
         "mechanize",
-        "six"
+
+        "pyserial",
+        "smspdu"
     ],
 
 ### Installation speciffic ###

@@ -5,11 +5,12 @@
    :synopsis: Sends sms-es using http://www.najdi.si/> service
 """
 
+import re, urllib, json
 import six
-import mechanize, re, urllib, json
+import mechanize
 
 from pysms import Sms
-from pysms import InputException, AuthException, SendException
+from pysms import AuthException, SendException
 
 class NajdiSiSms(Sms):
     """
@@ -30,10 +31,6 @@ class NajdiSiSms(Sms):
     Go `here <https://id.najdi.si/account/signupwizard/>`_ to register and enter
     relevant user data. Sms will be sent to your phone for confirmation.
     You will need working username and password to use this class.
-
-    .. warning::
-
-        Source sms number can't be changed using najdi.si service
     """
 
     base_url= "http://id.najdi.si/login"
@@ -43,9 +40,21 @@ class NajdiSiSms(Sms):
                "&sms_so_l_{session}={number}" \
                "&sms_message_{session}={data}"
 
-    def __init__(self, username = None, password = None):
+    def __init__(self, username = None, password = None, retries = 2):
+        """
+        Constructor
+
+        :param username: Your najdi.si username
+        :type username: str
+        :param password: Your najdi.si password
+        :type password: str
+        :param retries: Number of retries
+        :type retries: int
+        """
+
         self.username = username
         self.password = password
+        self.retries = retries
 
         self.br = mechanize.Browser()
         self.br.set_handle_robots(False)
@@ -100,37 +109,7 @@ class NajdiSiSms(Sms):
 
         raise SendException
 
-    def _parse_number( self, number ):
-        if not isinstance(number, six.string_types):
-            raise InputException("Number formatted incorrectly")
-
-        if number.startswith("+386"):
-            number = number[3:]
-        if number.startswith("00386"):
-            number = number[4:]
-
-        if len(number)>9 or len(number)<8:
-            raise InputException("Number length incorrect")
-        if len(number)==6:
-            return ("41", number)
-        if len(number)==8:
-            return (number[1:3], number[3:8])
-        if len(number)==9:
-            return (number[1:3], number[3:9])
-
-        raise InputException("Number formatted incorrectly")
-
-    def _parse_text(self, text):
-        if not isinstance(text, six.string_types):
-            raise InputException("Text formatted incorrectly")
-
-        if len(text) > 160:
-            raise InputException("Text too long")
-
-        return text
-
-    def send(self, number, text, retries = 2,
-             username = None, password = None):
+    def send(self, number, text):
         """
         Sends sms
 
@@ -138,11 +117,6 @@ class NajdiSiSms(Sms):
         :type number: str
         :param text: Text you want to send
         :type text: str
-        :param username: Your najd.si username
-        :type username: str
-        :param password: Your najdi.si password
-        :param retries: Number of retries when sending
-        :param retries: int
 
         :returns: Status, like number of sms-es left
 
@@ -158,21 +132,21 @@ class NajdiSiSms(Sms):
         """
 
 
-        number = self._parse_number(number)
+        number = str(self._parse_number(number).national_number)
         text = self._parse_text(text)
 
         response = None
         last_exception = None
-        for x in range(0, retries+1):
+        for x in range(0, self.retries+1):
             try:
                 if not self.loggedin:
-                    self._login(username or self.username,
-                                password or self.password)
+                    self._login(self.username, self.password)
 
                     if not self.session:
                         self.session = self._get_session()
 
-                response = self._send_sms( self.session, number[0], number[1], text )
+                response = self._send_sms(self.session,
+                                          number[0:2], number[2:], text )
             except AuthException as e:
                 last_exception = e
                 self.loggedin = False

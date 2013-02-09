@@ -6,6 +6,7 @@
 """
 
 from najdisi import NajdiSiSms
+from gsm_modem import gsm_modem
 
 # List of all providers
-providers = [NajdiSiSms]
+providers = [NajdiSiSms, gsm_modem]
