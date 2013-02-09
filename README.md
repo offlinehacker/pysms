@@ -1,4 +1,4 @@
-pysms - pythn library for sending sms-es
+pysms - python library for sending sms-es
 ========================================
 
 Description
