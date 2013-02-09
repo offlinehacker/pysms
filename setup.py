@@ -2,37 +2,56 @@ import os
 from setuptools import setup, find_packages
 
 # Utility function to read the README file.
-# Used for the long_description.  It's nice, because now 1) we have a 
+# Used for the long_description.  It's nice, because now 1) we have a
 # top level
-# README file and 2) it's easier to type in the README file than to put 
+# README file and 2) it's easier to type in the README file than to put
 # a raw
 # string in below ...
 def read(fname):
     return open(os.path.join(os.path.dirname(__file__), fname)).read()
 
-requires = [
-    "mechanize",
-    ]
-
 setup(
-    name = "najdismsgw",
+#### METADATA ####
+    # Package name
+    name = "pysms",
+    # Package version
     version = "0.2",
+    # Author description
     author = "Jaka Hudoklin",
     author_email = "jakahudoklin@gmail.com",
-    description = ("Najdi.si sms gateway, that fetches mails using imap and sends then as smses."),
+    # Package description
+    description = ("Python library for sending sms-es"),
+    long_description = read('README.md'),
+    # Package license
     license = "GNU",
-    keywords = "najdi.si sms gateway",
-    url = "https://github.com/offlinehacker/najdismsgw",
-    packages=find_packages(),
-    long_description=read('README.md'),
-    classifiers=[
+    # Searh data
+    keywords = "sms send nexmo najdisi",
+    url = "https://github.com/offlinehacker/pysms",
+    # Package classifiers
+    classifiers = [
+        # Dev phase
         "Development Status :: 4 - Beta",
-        "Topic :: Utilities",
+
+        # Topic
+        "Topic :: Communications :: Chat",
+        "Topic :: Communications :: Telephony",
+        "Topic :: Internet :: WWW/HTTP",
+        "Topic :: Software Development :: Libraries",
+
+        # Language
+        "Programming Language :: Python :: 2.6",
+        "Programming Language :: Python :: 2.7",
+        "Programming Language :: Python :: 2 :: Only",
+
+        # License
         "License :: OSI Approved :: GNU General Public License (GPL)",
     ],
-    entry_points="""
-        [console_scripts]
-        najdismsgw = najdismsgw.sender:main
-        """,
-    install_requires=requires,
+    # Install requierments
+    install_requires = [
+        "mechanize",
+        "six"
+    ],
+
+### Installation speciffic ###
+    packages = find_packages(),
 )

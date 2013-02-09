@@ -1,4 +1,10 @@
-bin/*
-build/*
-include/*
-lib/*
+# virtualenv
+bin
+build
+include
+lib
+local
+
+# python
+pysms.egg-info
+*.pyc
