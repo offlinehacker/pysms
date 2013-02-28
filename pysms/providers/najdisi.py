@@ -56,7 +56,7 @@ class NajdiSiSms(Sms):
 
     class SendSchema(Sms.SendSchema):
         number = SchemaNode(String(),
-                            preparer = lambda n: prepare_number(n, 'SL'),
+                            preparer = lambda n: prepare_number(n, 'SI'),
                             validator = colander.Length(1, 12))
 
     def __init__(self, username, password, retries = 2):
@@ -194,8 +194,8 @@ class NajdiSiSms(Sms):
                         self.logger.info("Out of balance")
                         raise SendException("Out of balance")
 
-                    self.logger.info("Sending sms")
-                    self._send_sms(self._session, number[4:6], number[6:], text )
+                self.logger.info("Sending sms")
+                self._send_sms(self._session, number[4:6], number[6:], text )
             except SmsException as e:
                 last_exception = e
                 self._session = None

@@ -155,6 +155,13 @@ class unit_tests(TestCase):
         expected_calls = [call._login(), call._send_sms('1361468289330', '41','928491', 'test')]
         self.assertEqual(expected_calls, manager.mock_calls)
 
+        self.s.send('041928491', 'test')
+
+        expected_calls = [call._login(),
+                          call._send_sms('1361468289330', '41','928491', 'test'),
+                          call._send_sms('1361468289330', '41','928491', 'test')]
+        self.assertEqual(expected_calls, manager.mock_calls)
+
     def test_send_sms_login_error_ok(self):
         def _login_first():
             def _login_second():
