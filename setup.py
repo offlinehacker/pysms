@@ -50,13 +50,19 @@ setup(
     install_requires = [
         "six",
         "phonenumbers",
+        "colander",
 
         "mechanize",
 
         "pyserial",
         "smspdu"
     ],
+    tests_require = [
+        "stubserver",
+        "mock"
+    ],
 
 ### Installation speciffic ###
+    test_suite="pysms.tests",
     packages = find_packages(),
 )
