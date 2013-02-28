@@ -6,22 +6,36 @@
 """
 
 import time
+import colander
+import logging
 
 from smspdu import SMS_SUBMIT
 from serial import Serial
 from serial import SerialException, SerialTimeoutException
-from phonenumbers import format_number
-from phonenumbers import PhoneNumberFormat
+from colander import SchemaNode
+from colander import String, Float, Bool
 
 from pysms import Sms
-from pysms import AuthException, SendException
+from pysms import InputException, AuthException, SendException, CommunicationException
 
 class GsmModemSms(Sms):
     """
     Send sms-es using gsm modem
     """
 
-    def __init__(self, sp_name = None, retries = 2, timeout = 0.2):
+    logger = logging.getLogger(__name__)
+
+    class InitSchema(Sms.InitSchema):
+        sp_name = SchemaNode(String())
+        timeout = SchemaNode(Float(),
+                             validator = colander.Range(0, float('inf')))
+
+    class SendSchema(Sms.SendSchema):
+        source_number = SchemaNode(String())
+        silent = SchemaNode(Bool())
+        delivery_report = SchemaNode(Bool())
+
+    def __init__(self, retries = 2, sp_name = "/dev/ttyUSB0", timeout = 0.2):
         """
         Constructor
 
@@ -31,11 +45,14 @@ class GsmModemSms(Sms):
         :type retries: int
         :param timeout: Serial port timeout
         :type timeout: int
+
+        :raises: :py:exc:`pysms.sms.InputException`
         """
 
-        self.sp_name= sp_name
-        self.retries = retries
-        self.timeout = timeout
+        try:
+            self.__dict__.update(self.InitSchema().deserialize(locals()))
+        except colander.Invalid, e:
+            raise InputException("Problems with input data %s" %e)
 
         self.sp = None
 
@@ -43,33 +60,36 @@ class GsmModemSms(Sms):
         # if serial port is not opened, open it
         if not self.sp:
             try:
+                self.logger.info("Opening serial port", self.sp_name)
                 self.sp = Serial(self.sp_name, timeout = self.timeout)
             except SerialException as e:
-                raise SendException("Problem opening serial port (%s)" %e.message)
+                raise CommunicationException("Problem opening serial port %s" %e)
 
+        self.logger.debug("Sending data over serial", data)
         self.sp.write(data)
         time.sleep(self.timeout)
 
         try:
             data = "".join([data for data in iter(lambda: self.sp.read(64), '')])
         except SerialTimeoutException as e:
-            raise SendException("Timeout reading from serial port")
+            raise CommunicationException("Timeout reading from serial port")
         except SerialException as e:
-            raise SendException("Problem reading from serial port (%s)" %e.message)
+            raise CommunicationException("Problem reading from serial port %s" %e)
 
         return data
 
     def _ser_send_verify(self, data):
         if not "OK" in self._ser_send("%s\r" %data):
-            raise SendException("Modem is not ready")
+            raise CommunicationException("Modem is not ready")
 
-    def send(self, number, text, source_number = None, silent = False):
+    def send(self, number, text, source_number = None,
+             silent = False, delivery_report = False):
         """
         Sends sms
 
         .. note::
 
-            Chaning source number does not work on most providers, but sending
+            Changing source number does not work on most providers, but sending
             silent sms-es usually does.
 
         :param number: Number where sms should be sent
@@ -80,29 +100,27 @@ class GsmModemSms(Sms):
         :type source_number: str
         :param silent: Should silent sms be sent
         :type silent: boolean
+        :param delivery_report: Should delivery report be received
+        :type delivery_report: boolean
 
-        :returns: Status, like number of sms-es left
-
-            .. code-block:: python
-
-                {u'count': inf}
-
-        :rtype: dict
         :raises: :py:exc:`pysms.sms.SmsException`,
                  :py:exc:`pysms.sms.InputException`,
                  :py:exc:`pysms.sms.SendException`,
                  :py:exc:`pysms.sms.AuthException`,
         """
 
-        source_number = source_number or format_number(self._parse_number(source_number),
-                                                       PhoneNumberFormat.E164)[1:]
-        number = format_number(self._parse_number(number), PhoneNumberFormat.E164)[1:]
-        text = self._parse_text(text)
+        try:
+            params = self.SendSchema().deserialize(locals())
+        except colander.Invalid as e:
+            raise InputException("Problems with input data %s" %e)
 
         if not silent:
-            pdu = SMS_SUBMIT.create(source_number, number, text).toPDU()
-        else:
-            pdu = SMS_SUBMIT.create(source_number, number, text, tp_pid=64, tp_srr=1).toPDU()
+            pdu = SMS_SUBMIT.create(params['source_number'][1:],
+                                    params['number'][1:],
+                                    params['text'],
+                                    tp_pid = 64 if params['silent'] else 0,
+                                    tp_srr = 1 if params['delivery_report'] else 0
+                                   ).toPDU()
 
         # Verify modem
         try:
@@ -116,4 +134,4 @@ class GsmModemSms(Sms):
             self._ser_send_verify("AT+CMGS=" + str(len(pdu)/2))
             self._ser_send("00" + pdu + "\x1A")
 
-        return {'count': float('inf')}
+        return float('inf')

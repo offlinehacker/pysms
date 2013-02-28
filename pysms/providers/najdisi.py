@@ -5,12 +5,18 @@
    :synopsis: Sends sms-es using http://www.najdi.si/> service
 """
 
+import logging
 import re, urllib, json
 import six
 import mechanize
+import colander
 
-from pysms import Sms
-from pysms import AuthException, SendException
+from colander import SchemaNode
+from colander import String
+
+from pysms import Sms, prepare_number
+from pysms import SmsException, CommunicationException, AuthException, \
+                  SendException, ResponseException
 
 class NajdiSiSms(Sms):
     """
@@ -33,14 +39,27 @@ class NajdiSiSms(Sms):
     You will need working username and password to use this class.
     """
 
-    base_url= "http://id.najdi.si/login"
+    logger = logging.getLogger(__name__)
+
+    home_url = "http://www.najdi.si"
+    login_url= "https://id.najdi.si/login"
+    logout_url= "http://www.najdi.si/auth/logout.jsp?target_url=http://www.najdi.si/index.jsp"
     session_url= "http://www.najdi.si/auth/login.jsp?sms=1&target_url=http://www.najdi.si/index.jsp"
     send_url = "http://www.najdi.si/sms/smsController.jsp?sms_action=4" \
                "&sms_so_ac_{session}={prefix}" \
                "&sms_so_l_{session}={number}" \
                "&sms_message_{session}={data}"
 
-    def __init__(self, username = None, password = None, retries = 2):
+    class InitSchema(Sms.InitSchema):
+        username = SchemaNode(String(), validator = colander.Length(1,50))
+        password = SchemaNode(String(), validator = colander.Length(1,50))
+
+    class SendSchema(Sms.SendSchema):
+        number = SchemaNode(String(),
+                            preparer = lambda n: prepare_number(n, 'SL'),
+                            validator = colander.Length(1, 12))
+
+    def __init__(self, username, password, retries = 2):
         """
         Constructor
 
@@ -52,44 +71,69 @@ class NajdiSiSms(Sms):
         :type retries: int
         """
 
-        self.username = username
-        self.password = password
-        self.retries = retries
+        self.__dict__.update(self.InitSchema().deserialize(locals()))
 
         self.br = mechanize.Browser()
         self.br.set_handle_robots(False)
-        self.loggedin = False
-        self.session = None
 
-    def _login(self, username, password):
-        try:
-            self.br.open(self.base_url)
-        except Exception as e:
-            raise AuthException("Error logging in unknow exception (%s)" %e.message)
+        self._session = None
+        self._balance = 0
 
-        try:
-            self.br.select_form(name = "lgn")
-        except mechanize._mechanize.FormNotFoundError as e:
-            self.loggedin = True
-            raise AuthException("Error extracting login form (%s)" %e.message)
-
-        self.br["j_username"] = username
-        self.br["j_password"] = password
-        self.br.submit()
-
-        self.br.open("http://www.najdi.si")
-        self.loggedin = True
-
-    def _get_session(self):
-        try:
-            response = self.br.open(self.session_url)
-        except Exception as e:
-            raise AuthException("Error getting session unknow exception (%s)" %e.message)
-
-        match = re.search('sms_so_l_(\d+)', response.get_data())
+    def _parse_balance(self, resp):
+        match = re.search('<strong id="sms_left" name="sms_left">\s?(\d+)\s?/\s?(\d+)\s?</strong>',
+                          resp)
         if not match:
-            raise AuthException("Error getting session, sms_so_l_(\d+) not found")
-        return match.group(1)
+            raise ResponseException("Could not parse balance")
+
+        return int(match.group(2)) - int(match.group(1))
+
+    @property
+    def balance(self):
+        """
+        Balance in form of sms-es left
+
+        returns: Balance
+        :rtype: int
+        """
+
+        if not self._balance:
+            self._login()
+
+        return self._balance
+
+    def _login(self):
+        # We have to log out first to provide consistency,
+        # najdi.si has some wierd bugs
+        try:
+            self.br.open(self.logout_url)
+            resp = self.br.open(self.login_url)
+
+            try:
+                self.br.select_form(name = "lgn")
+            except mechanize._mechanize.FormNotFoundError as e:
+                raise ResponseException("Error extracting login form (%s)" %e)
+
+            try:
+                self.br["j_username"] = self.username
+                self.br["j_password"] = self.password
+            except mechanize._form.ControlNotFoundError as e:
+                raise ResponseException("Error getting username and password form inputs %s" %e)
+
+            resp = self.br.submit()
+            resp = self.br.open(self.session_url)
+
+        except mechanize._response.response_seek_wrapper as e:
+            raise CommunicationException("Error in communication with service %s" %e)
+
+        if resp.geturl() == self.login_url:
+            raise AuthException("Error logging in, incorrect username or password")
+
+        match = re.search('sms_so_l_(\d+)', resp.get_data())
+        if not match:
+            raise ResponseException("Error getting session id, sms_so_l_(\d+) not found")
+
+        self._balance = self._parse_balance(resp.get_data())
+        self._session = match.group(1)
 
     def _send_sms( self, session, prefix, number, data ):
         quoted = urllib.quote(data) if six.PY3 else urllib.quote(data.encode("utf-8"))
@@ -99,15 +143,18 @@ class NajdiSiSms(Sms):
                                    data = quoted)
 
         try:
-            response = self.br.open(url)
-        except Exception as e:
-            raise AuthException("Error sending sms unknow exception (%s)" %e.message)
+            resp = self.br.open(url)
+        except mechanize._response.response_seek_wrapper as e:
+            raise CommunicationException("Error sending sms (%s)" %e)
 
-        data = json.loads(response.get_data())
-        if data.has_key("msg_left") and data.has_key("msg_cnt"):
-            return ({"count" : data["msg_left"]})
+        try:
+            data = json.loads(resp.get_data())
+        except ValueError as e:
+            raise ResponseException("Error parsing response %s... %s" %(data[0:100], e))
+        if not data.has_key("msg_left"):
+            raise ResponseException("Incorrect response %s..." %data[0:100])
 
-        raise SendException
+        self._balance = int(data["msg_left"])
 
     def send(self, number, text):
         """
@@ -118,47 +165,45 @@ class NajdiSiSms(Sms):
         :param text: Text you want to send
         :type text: str
 
-        :returns: Status, like number of sms-es left
-
-            .. code-block:: python
-
-                {u'count': 10}
-
-        :rtype: dict
-        :raises: :py:exc:`pysms.sms.SmsException`,
-                 :py:exc:`pysms.sms.InputException`,
-                 :py:exc:`pysms.sms.AuthException`,
+        :returns: Balance
+        :rtype: int
+        :raises: :py:exc:`pysms.sms.AuthException`,
                  :py:exc:`pysms.sms.SendException`,
+                 :py:exc:`pysms.sms.InputException`,
+                 :py:exc:`pysms.sms.CommunicationException`,
+                 :py:exc:`pysms.sms.ResponseException`
         """
 
-        number = str(self._parse_number(number, country = "SI").national_number)
-        text = self._parse_text(text)
+        options = self.SendSchema().deserialize(locals())
+        number = options["number"]
+        text = options["text"]
 
-        response = None
+        self.logger.info("Sms with number %s and text %s", number, text)
+
         last_exception = None
-        for x in range(0, self.retries+1):
+        for x in range(0, self.retries + 1):
+            self.logger.info("Send retry %d", x)
+
             try:
-                if not self.loggedin:
-                    self._login(self.username, self.password)
+                if not self._session:
+                    self.logger.debug("We are not yet logged in")
+                    self._login()
+                    self.logger.info("Login complete")
 
-                    if not self.session:
-                        self.session = self._get_session()
+                    if not self._balance:
+                        self.logger.info("Out of balance")
+                        raise SendException("Out of balance")
 
-                response = self._send_sms(self.session,
-                                          number[0:2], number[2:], text )
-            except AuthException as e:
+                    self.logger.info("Sending sms")
+                    self._send_sms(self._session, number[4:6], number[6:], text )
+            except SmsException as e:
                 last_exception = e
-                self.loggedin = False
-                self.session = False
-
-                continue
+                self._session = None
             else:
-                if response["count"] == 0:
-                    raise SendException("Quota reached")
+                last_exception = None
+                break
 
-                return response
+        if last_exception: raise last_exception
 
-        if last_exception:
-            raise last_exception
-        else:
-            raise SendException("Unknown exception")
+        self.logger.info("Sms sent")
+        return self._balance

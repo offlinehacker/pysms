@@ -5,18 +5,23 @@
    :synopsis: Base class declarations
 """
 
-import locale
+import inspect
+import locale, logging
 import six
+import colander
 
 from phonenumbers import parse as parse_number
+from phonenumbers import PhoneNumberFormat, format_number
 from phonenumbers.phonenumberutil import NumberParseException
+from colander import MappingSchema, SchemaNode
+from colander import String, Integer, Bool
 
 # We will need locale set-up for international phone number parsing
 locale.setlocale(locale.LC_ALL, '')
 
 class SmsException(Exception):
     """
-    Exception while sending sms
+    General sms exception
     """
     def __init__(self, message = None):
         """
@@ -31,6 +36,21 @@ class SmsException(Exception):
 class AuthException(SmsException):
     """
     Exception while authenticating with provider
+    """
+
+    def __init__(self, message = None):
+        """
+        Handles the exception.
+
+        :param message: the error message.
+        :type message: str
+        """
+
+        SmsException.__init__(self, message or self.__doc__)
+
+class CommunicationException(SmsException):
+    """
+    Exception in communication with service
     """
 
     def __init__(self, message = None):
@@ -58,6 +78,21 @@ class SendException(SmsException):
 
         SmsException.__init__(self, message or self.__doc__)
 
+class ResponseException(SmsException):
+    """
+    Problems with a response
+    """
+
+    def __init__(self, message = None):
+        """
+        Handles the exception.
+
+        :param message: the error message.
+        :type message: str
+        """
+
+        SmsException.__init__(self, message or self.__doc_)
+
 class InputException(SmsException):
     """
     Problems with input data
@@ -73,6 +108,17 @@ class InputException(SmsException):
 
         SmsException.__init__(self, message or self.__doc__)
 
+def prepare_number(number, country = None):
+    if not country:
+        country = locale.getlocale()[0].split("_")[1]
+
+    try:
+      number = parse_number(number, country)
+    except NumberParseException:
+        return ''
+
+    return format_number(number, PhoneNumberFormat.E164)
+
 class Sms(object):
     """
     Abstract base class for sending sms-es.
@@ -81,54 +127,60 @@ class Sms(object):
     classes can override.
     """
 
-    def _parse_number(self, number, country = None ):
+    logger = logging.getLogger(__name__)
+
+    CAP_SILENT = 1
+    """Capability to send silent sms"""
+    CAP_SPOOF_SOURCE = 2
+    """Capability to spoof source sms address"""
+    CAP_DELIVERY_REPORT = 3
+    """Capability to receive delivery reports"""
+
+    class InitSchema(MappingSchema):
         """
-        Helper function to parse numbers
-
-        :param number: Number you want to parse
-        :type number: str
-        :param country: Country you are from, if not specified it will get read from locale
-        :type country: str
-
-        :returns: Parsed phone number
-        :rtype: :class:`phonenumbers.phonenumber.PhoneNumber`
-        """
-
-        if not isinstance(number, six.string_types):
-            raise InputException("Number format incorrect, it must be string")
-
-        if not country:
-            country = locale.getlocale()[0].split("_")[1]
-
-        try:
-            number = parse_number(number, country)
-        except NumberParseException as e:
-            raise InputException("Number format incorrect (%s)" % e.message)
-
-        return number
-
-    def _parse_text(self, text):
-        """
-        Helper function to parse text
-
-        .. note::
-
-            Sms text must not be longer than 160 chars
-
-        :param text: Text to parse
-        :type text: str
-
-        :returns: Parsed text
-        :rtype: str
+        Base schema used for constructor
         """
 
-        if not isinstance(text, six.string_types):
-            raise InputException("Text formatted incorrectly")
+        retries = SchemaNode(Integer(),
+                             validator = colander.Range(0, float('inf')))
 
-        if len(text) > 160:
-            raise InputException("Text too long")
+    class SendSchema(MappingSchema):
+        """
+        Base schema used for sms send
+        """
 
-        return text
+        number = SchemaNode(String(),
+                            preparer = prepare_number,
+                            validator = colander.Length(1,12))
+        text = SchemaNode(String(),
+                          validator = colander.Length(0, 160))
+
+    capabilities = None
+    """Flag representing sms provider capabilities"""
+
+    @property
+    def balance(self):
+      """
+      Balance in form of money or sms-es left on provider
+
+      returns: Balance
+      :rtype: int
+      """
+
+      return float('inf')
+
+    @property
+    def price(self, args):
+      """
+      Price of single sms
+
+      :param args: Additional argument for price query
+
+      :returns: Price
+      :rtype: int
+      """
+
+      return 1
 
     def send(self, number, text):
         """
@@ -141,17 +193,13 @@ class Sms(object):
         :param retries: Number of retries when sending
         :param retries: int
 
-        :returns: Status, like number of sms-es left
-
-            .. code-block:: python
-
-                {u'count': 10}
-
-        :rtype: dict
-        :raises: :py:exc:`pysms.sms.SmsException`,
-                 :py:exc:`pysms.sms.InputException`,
-                 :py:exc:`pysms.sms.AuthException`,
+        :returns: Balance
+        :rtype: int
+        :raises: :py:exc:`pysms.sms.AuthException`,
                  :py:exc:`pysms.sms.SendException`,
+                 :py:exc:`pysms.sms.InputException`,
+                 :py:exc:`pysms.sms.CommunicationException`,
+                 :py:exc:`pysms.sms.ResponseException`
         """
 
         raise NotImplementedError
