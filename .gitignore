@@ -6,5 +6,6 @@ lib
 local
 
 # python
-pysms.egg-info
+*.egg-info
+*.egg
 *.pyc
