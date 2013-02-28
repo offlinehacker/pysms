@@ -3,7 +3,14 @@ pysms - python library for sending sms-es
 
 Description
 -----------
-Take a look at examples/simple.py
+Library for sending sms-es using different providers
+
+Supported providers
+-------------------
+
+- najdi.si
+- nexmo
+- gsm modem
 
 TODO
 ----
